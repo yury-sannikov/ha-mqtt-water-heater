@@ -84,7 +84,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     password = config.get(CONF_PASSWORD)
 
     hass_water_heaters = [
-        EcoNetWaterHeater('demo')
+        EcoNetWaterHeater('demo22')
     ]
     add_entities(hass_water_heaters)
     hass.data[ECONET_DATA]["water_heaters"].extend(hass_water_heaters)
