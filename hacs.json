@@ -1,0 +1,7 @@
+{
+  "name": "MQTT Water Heater component",
+  "country": "RU",
+  "domains": ["sensor"],
+  "homeassistant": "0.109.1",
+  "render_readme": true
+}
