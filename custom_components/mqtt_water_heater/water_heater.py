@@ -34,10 +34,11 @@ from homeassistant.components.mqtt import (
     MQTT_AVAILABILITY_SCHEMA,
     # MqttDiscoveryUpdate,
     # MqttEntityDeviceInfo,
+    DATA_MQTT,
     subscription
 )
 
-from .const import DOMAIN, CONF_WATER_HEATER_TARGET_TEMPERATURE, CONF_WATER_HEATER_MIN_TEMPERATURE, CONF_WATER_HEATER_MAX_TEMPERATURE
+from .const import DOMAIN, CONF_WATER_HEATER_TARGET_TEMPERATURE, CONF_WATER_HEATER_MIN_TEMPERATURE, CONF_WATER_HEATER_MAX_TEMPERATURE, CONF_WATER_HEATER_SET_TEMPERATURE_TOPIC
 
 DEPENDENCIES = ["mqtt"]
 
@@ -56,6 +57,7 @@ PLATFORM_SCHEMA = (
             vol.Optional(CONF_WATER_HEATER_TARGET_TEMPERATURE, default=38): cv.positive_int,
             vol.Optional(CONF_WATER_HEATER_MIN_TEMPERATURE, default=35): cv.positive_int,
             vol.Optional(CONF_WATER_HEATER_MAX_TEMPERATURE, default=60): cv.positive_int,
+            vol.Required(CONF_WATER_HEATER_SET_TEMPERATURE_TOPIC): cv.string,
         }
     )
     .extend(MQTT_AVAILABILITY_SCHEMA.schema)
@@ -104,6 +106,7 @@ class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
         current_operation = "gas"
         min_temp = config.get(CONF_WATER_HEATER_MIN_TEMPERATURE, 35)
         max_temp = config.get(CONF_WATER_HEATER_MAX_TEMPERATURE, 60)
+        command_topic = config.get(CONF_WATER_HEATER_SET_TEMPERATURE_TOPIC)
 
 
         # Set instance variables
@@ -113,6 +116,7 @@ class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
         self._current_operation = current_operation
         self._min_temp = min_temp
         self._max_temp = max_temp
+        self._command_topic = command_topic
 
         # build Support Flags
         self._support_flags = SUPPORT_FLAGS_HEATER
@@ -174,7 +178,8 @@ class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
     def set_temperature(self, **kwargs):
         """Set new target temperatures."""
         self._target_temperature = kwargs.get(ATTR_TEMPERATURE)
-        _LOGGER.error("WH set_temperature received: %s", str(self._target_temperature))
+        # Notify boiler
+        self.hass.components.mqtt.publish(self._command_topic, str(self._target_temperature))
         self.schedule_update_ha_state()
 
     def set_operation_mode(self, operation_mode):
