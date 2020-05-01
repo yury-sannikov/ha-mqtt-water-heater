@@ -51,10 +51,11 @@ PLATFORM_SCHEMA = (
     MQTT_RO_PLATFORM_SCHEMA.extend(
         {
             vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+            vol.Optional(CONF_FORCE_UPDATE, default=DEFAULT_FORCE_UPDATE): cv.boolean,
             vol.Optional(CONF_ICON): cv.icon,
-            vol.Optional(CONF_WATER_HEATER_TARGET_TEMPERATURE): cv.positive_int,
-            vol.Optional(CONF_WATER_HEATER_MIN_TEMPERATURE): cv.positive_int,
-            vol.Optional(CONF_WATER_HEATER_MAX_TEMPERATURE): cv.positive_int,
+            vol.Optional(CONF_WATER_HEATER_TARGET_TEMPERATURE, default=38): cv.positive_int,
+            vol.Optional(CONF_WATER_HEATER_MIN_TEMPERATURE, default=35): cv.positive_int,
+            vol.Optional(CONF_WATER_HEATER_MAX_TEMPERATURE, default=60): cv.positive_int,
         }
     )
     .extend(MQTT_AVAILABILITY_SCHEMA.schema)
@@ -81,9 +82,9 @@ class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
     ):
         self._config = config
         self._unique_id = config.get(CONF_UNIQUE_ID)
-        self._state = None
         self._sub_state = None
         self._expiration_trigger = None
+
 
         MqttAvailability.__init__(self, config)
 
@@ -208,7 +209,7 @@ class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
     @property
     def state(self):
         """Return the state of the entity."""
-        return self._state
+        return self._target_temperature
 
     @property
     def force_update(self):
@@ -239,6 +240,7 @@ class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
 
     async def _subscribe_topics(self):
         """(Re)Subscribe to topics."""
+
         template = self._config.get(CONF_VALUE_TEMPLATE)
         if template is not None:
             template.hass = self.hass
@@ -249,17 +251,16 @@ class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
             """Handle new MQTT messages."""
             payload = msg.payload
 
-            if template is not None:
-                payload = template.async_render_with_possible_json_value(
-                    payload, self._state
-                )
-            self._state = payload
+            # if template is not None:
+            #     payload = template.async_render_with_possible_json_value(
+            #         payload, self._state
+            #     )
+            # self._state = payload
 
             try:
-                _LOGGER.error("WH message_received: %s", json.dumps(payload))
-                self._target_temperature = int(payload)
+                self._target_temperature = float(payload)
             except Exception as ex:
-                _LOGGER.error("WH unable to set temp. Payload: %s, error: %s", json.dumps(payload), ex)
+                _LOGGER.debug("unable to set _target_temperature. Payload: %s, error: %s", string(payload), ex)
 
             self.async_write_ha_state()
 
