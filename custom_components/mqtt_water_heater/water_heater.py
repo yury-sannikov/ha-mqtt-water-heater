@@ -1,51 +1,93 @@
 """Demo platform that offers a fake water heater device."""
+import voluptuous as vol
+import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.entity import Entity
+from homeassistant.core import callback
+import logging
+import json
+
 from homeassistant.components.water_heater import (
     SUPPORT_AWAY_MODE,
     SUPPORT_OPERATION_MODE,
     SUPPORT_TARGET_TEMPERATURE,
     WaterHeaterDevice,
+    PLATFORM_SCHEMA
 )
-from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
+from homeassistant.const import (
+    CONF_ICON,
+    CONF_NAME,
+    ATTR_TEMPERATURE,
+    TEMP_CELSIUS,
+    CONF_FORCE_UPDATE,
+    CONF_VALUE_TEMPLATE
+)
 from homeassistant.util.temperature import convert as convert_temperature
+from homeassistant.components.mqtt import (
+    # CONF_COMMAND_TOPIC,
+    CONF_QOS,
+    # CONF_RETAIN,
+    CONF_STATE_TOPIC,
+    CONF_UNIQUE_ID,
+    # MqttAttributes,
+    MqttAvailability,
+    MQTT_RO_PLATFORM_SCHEMA,
+    MQTT_AVAILABILITY_SCHEMA,
+    # MqttDiscoveryUpdate,
+    # MqttEntityDeviceInfo,
+    subscription
+)
+
+from .const import DOMAIN, CONF_WATER_HEATER_TARGET_TEMPERATURE, CONF_WATER_HEATER_MIN_TEMPERATURE, CONF_WATER_HEATER_MAX_TEMPERATURE
+
+DEPENDENCIES = ["mqtt"]
 
 SUPPORT_FLAGS_HEATER = (
     SUPPORT_TARGET_TEMPERATURE | SUPPORT_OPERATION_MODE | SUPPORT_AWAY_MODE
 )
 
+DEFAULT_NAME = "Water Heater"
+DEFAULT_FORCE_UPDATE = False
+PLATFORM_SCHEMA = (
+    MQTT_RO_PLATFORM_SCHEMA.extend(
+        {
+            vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+            vol.Optional(CONF_ICON): cv.icon,
+            vol.Optional(CONF_WATER_HEATER_TARGET_TEMPERATURE): cv.positive_int,
+            vol.Optional(CONF_WATER_HEATER_MIN_TEMPERATURE): cv.positive_int,
+            vol.Optional(CONF_WATER_HEATER_MAX_TEMPERATURE): cv.positive_int,
+        }
+    )
+    .extend(MQTT_AVAILABILITY_SCHEMA.schema)
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Set up the Demo water_heater devices."""
     async_add_entities(
         [
-            DemoWaterHeater("Water Heater", 45, TEMP_CELSIUS, True, "eco"),
+            #MQTTWaterHeater(name, 38, TEMP_CELSIUS, False, "eco"),
+            MQTTWaterHeater(config, async_add_entities, discovery_info),
         ]
     )
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up the Demo config entry."""
     await async_setup_platform(hass, {}, async_add_entities)
 
 
-class DemoWaterHeater(WaterHeaterDevice):
-    """Representation of a demo water_heater device."""
-
+class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
     def __init__(
-        self, name, target_temperature, unit_of_measurement, away, current_operation
+        self, config, config_entry, discovery_data
     ):
-        """Initialize the water_heater device."""
-        self._name = name
-        self._support_flags = SUPPORT_FLAGS_HEATER
-        if target_temperature is not None:
-            self._support_flags = self._support_flags | SUPPORT_TARGET_TEMPERATURE
-        if away is not None:
-            self._support_flags = self._support_flags | SUPPORT_AWAY_MODE
-        if current_operation is not None:
-            self._support_flags = self._support_flags | SUPPORT_OPERATION_MODE
-        self._target_temperature = target_temperature
-        self._unit_of_measurement = unit_of_measurement
-        self._away = away
-        self._current_operation = current_operation
+        self._config = config
+        self._unique_id = config.get(CONF_UNIQUE_ID)
+        self._state = None
+        self._sub_state = None
+        self._expiration_trigger = None
+
+        MqttAvailability.__init__(self, config)
+
+        ####  WaterHeaterDevice init
         self._operation_list = [
             "eco",
             "electric",
@@ -55,6 +97,37 @@ class DemoWaterHeater(WaterHeaterDevice):
             "gas",
             "off",
         ]
+        # Get configs (or defaults)
+        target_temperature = config.get(CONF_WATER_HEATER_TARGET_TEMPERATURE, 38)
+        away = None
+        current_operation = "gas"
+        min_temp = config.get(CONF_WATER_HEATER_MIN_TEMPERATURE, 35)
+        max_temp = config.get(CONF_WATER_HEATER_MAX_TEMPERATURE, 60)
+
+
+        # Set instance variables
+        self._target_temperature = target_temperature
+        self._unit_of_measurement = TEMP_CELSIUS
+        self._away = away
+        self._current_operation = current_operation
+        self._min_temp = min_temp
+        self._max_temp = max_temp
+
+        # build Support Flags
+        self._support_flags = SUPPORT_FLAGS_HEATER
+        if target_temperature is not None:
+            self._support_flags = self._support_flags | SUPPORT_TARGET_TEMPERATURE
+        if away is not None:
+            self._support_flags = self._support_flags | SUPPORT_AWAY_MODE
+        if current_operation is not None:
+            self._support_flags = self._support_flags | SUPPORT_OPERATION_MODE
+
+
+
+    @property
+    def unique_id(self):
+        """Return a unique ID."""
+        return self._unique_id
 
     @property
     def supported_features(self):
@@ -68,8 +141,8 @@ class DemoWaterHeater(WaterHeaterDevice):
 
     @property
     def name(self):
-        """Return the name of the water_heater device."""
-        return self._name
+        """Return the name of the sensor."""
+        return self._config[CONF_NAME]
 
     @property
     def temperature_unit(self):
@@ -96,9 +169,11 @@ class DemoWaterHeater(WaterHeaterDevice):
         """Return if away mode is on."""
         return self._away
 
+    ## TODO: send MQTT message to set boiler temperature
     def set_temperature(self, **kwargs):
         """Set new target temperatures."""
         self._target_temperature = kwargs.get(ATTR_TEMPERATURE)
+        _LOGGER.error("WH set_temperature received: %s", str(self._target_temperature))
         self.schedule_update_ha_state()
 
     def set_operation_mode(self, operation_mode):
@@ -120,15 +195,93 @@ class DemoWaterHeater(WaterHeaterDevice):
     def min_temp(self):
         """Return the minimum temperature."""
         return convert_temperature(
-            35, TEMP_CELSIUS, self.temperature_unit
+            self._min_temp, TEMP_CELSIUS, self.temperature_unit
         )
 
     @property
     def max_temp(self):
         """Return the maximum temperature."""
         return convert_temperature(
-            60, TEMP_CELSIUS, self.temperature_unit
+            self._max_temp, TEMP_CELSIUS, self.temperature_unit
         )
+
+    @property
+    def state(self):
+        """Return the state of the entity."""
+        return self._state
+
+    @property
+    def force_update(self):
+        """Force update."""
+        return self._config[CONF_FORCE_UPDATE]
+
+    ###
+    # Handle MQTT stuff
+    ###
+    async def async_added_to_hass(self):
+        """Subscribe to MQTT events."""
+        await super().async_added_to_hass()
+        await self._subscribe_topics()
+
+    async def discovery_update(self, discovery_payload):
+        """Handle updated discovery message."""
+        config = PLATFORM_SCHEMA(discovery_payload)
+        self._config = config
+        await self._subscribe_topics()
+        self.async_write_ha_state()
+
+    async def async_will_remove_from_hass(self):
+        """Unsubscribe when removed."""
+        self._sub_state = await subscription.async_unsubscribe_topics(
+            self.hass, self._sub_state
+        )
+        await MqttAvailability.async_will_remove_from_hass(self)
+
+    async def _subscribe_topics(self):
+        """(Re)Subscribe to topics."""
+        template = self._config.get(CONF_VALUE_TEMPLATE)
+        if template is not None:
+            template.hass = self.hass
+
+        @callback
+        ##@log_messages(self.hass, self.entity_id)
+        def message_received(msg):
+            """Handle new MQTT messages."""
+            payload = msg.payload
+
+            if template is not None:
+                payload = template.async_render_with_possible_json_value(
+                    payload, self._state
+                )
+            self._state = payload
+
+            try:
+                _LOGGER.error("WH message_received: %s", json.dumps(payload))
+                self._target_temperature = int(payload)
+            except Exception as ex:
+                _LOGGER.error("WH unable to set temp. Payload: %s, error: %s", json.dumps(payload), ex)
+
+            self.async_write_ha_state()
+
+        self._sub_state = await subscription.async_subscribe_topics(
+            self.hass,
+            self._sub_state,
+            {
+                "state_topic": {
+                    "topic": self._config[CONF_STATE_TOPIC],
+                    "msg_callback": message_received,
+                    "qos": self._config[CONF_QOS],
+                }
+            },
+        )
+
+##################################################################################################
+
+
+
+
+
+
 
 # """Support for Rheem EcoNet water heaters."""
 # import datetime
