@@ -10,7 +10,7 @@ from homeassistant.components.water_heater import (
     SUPPORT_AWAY_MODE,
     SUPPORT_OPERATION_MODE,
     SUPPORT_TARGET_TEMPERATURE,
-    WaterHeaterDevice,
+    WaterHeaterEntity,
     PLATFORM_SCHEMA
 )
 from homeassistant.const import (
@@ -78,7 +78,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     await async_setup_platform(hass, {}, async_add_entities)
 
 
-class MQTTWaterHeater(WaterHeaterDevice, MqttAvailability):
+class MQTTWaterHeater(WaterHeaterEntity, MqttAvailability):
     def __init__(
         self, config, config_entry, discovery_data
     ):
