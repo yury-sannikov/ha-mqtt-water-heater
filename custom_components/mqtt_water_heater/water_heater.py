@@ -19,26 +19,34 @@ from homeassistant.const import (
     ATTR_TEMPERATURE,
     TEMP_CELSIUS,
     CONF_FORCE_UPDATE,
-    CONF_VALUE_TEMPLATE
+    CONF_VALUE_TEMPLATE,
+    CONF_UNIQUE_ID
 )
 from homeassistant.util.temperature import convert as convert_temperature
-from homeassistant.components.mqtt import (
-    # CONF_COMMAND_TOPIC,
+
+from homeassistant.components.mqtt.const import (
     CONF_QOS,
-    # CONF_RETAIN,
     CONF_STATE_TOPIC,
-    CONF_UNIQUE_ID,
-    # MqttAttributes,
+)
+
+from homeassistant.components.mqtt.mixins import (
     MqttAvailability,
+    MQTT_AVAILABILITY_SCHEMA
+)
+
+from homeassistant.components.mqtt import (
     MQTT_RO_PLATFORM_SCHEMA,
-    MQTT_AVAILABILITY_SCHEMA,
-    # MqttDiscoveryUpdate,
-    # MqttEntityDeviceInfo,
     DATA_MQTT,
     subscription
 )
 
-from .const import DOMAIN, CONF_WATER_HEATER_TARGET_TEMPERATURE, CONF_WATER_HEATER_MIN_TEMPERATURE, CONF_WATER_HEATER_MAX_TEMPERATURE, CONF_WATER_HEATER_SET_TEMPERATURE_TOPIC
+from .const import (
+    DOMAIN,
+    CONF_WATER_HEATER_TARGET_TEMPERATURE,
+    CONF_WATER_HEATER_MIN_TEMPERATURE,
+    CONF_WATER_HEATER_MAX_TEMPERATURE,
+    CONF_WATER_HEATER_SET_TEMPERATURE_TOPIC
+)
 
 DEPENDENCIES = ["mqtt"]
 
