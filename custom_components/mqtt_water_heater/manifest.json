@@ -3,5 +3,6 @@
   "name": "MQTT Water Heater",
   "documentation": "https://github.com/yury-sannikov/ha-mqtt-water-heater",
   "codeowners": [],
-  "dependencies": ["mqtt"]
+  "dependencies": ["mqtt"],
+  "version", "1.0.0"
 }
